@@ -48,7 +48,9 @@ import angularBeans.boot.BeanRegistry;
 import angularBeans.ngservices.NGService;
 import angularBeans.util.ClosureCompiler;
 import angularBeans.util.CommonUtils;
+import angularBeans.util.DefaultStaticJsCacheLoader;
 import angularBeans.util.StaticJsCache;
+import angularBeans.util.StaticJsCacheFactory;
 
 /**
  * this listener:
@@ -67,33 +69,23 @@ public class AngularBeansServletContextListener implements ServletContextListene
 	public static SockJsServer sockJsServer;
 	private static final Pattern SESSION_PATTERN = Pattern.compile(".*/.+/(.+)/websocket$");
 	
-	ClosureCompiler compiler = new ClosureCompiler();
-	ServletContext context;
-
+	private StaticJsCacheFactory  jsCacheFactory;
 	
+	ServletContext context;
 
 	@Override
 	public void contextInitialized(ServletContextEvent servletContextEvent) {
 		context = servletContextEvent.getServletContext();
 
 		try {
-			if (sockJsServer == null) {
+			if (sockJsServer == null)
 				initJSR356();
-
-			}
-
 		} catch (ServletException e) {
-
 			e.printStackTrace();
 		}
 
-		generateModule();
-		generateExtentions();
-
-	}
-
-	@Override
-	public void contextDestroyed(ServletContextEvent servletContextEvent) {
+		jsCacheFactory = new StaticJsCacheFactory(DefaultStaticJsCacheLoader.class);
+		jsCacheFactory.BuildStaticJsCache();
 	}
 
 	private String extractPrefixFromMapping(String mapping) {
@@ -157,13 +149,10 @@ public class AngularBeansServletContextListener implements ServletContextListene
 	}
 
 	public void initJSR356() throws ServletException {
-
 		sockJsServer = new SockJsServer();
-
 		sockJsServer.init();
 
 		if (sockJsServer.options.websocket) {
-
 			// Make sure we listen on all possible mappings of the servlet
 			// for (String mapping :
 			// getServletContext().getServletRegistration(context.getServletName()).getMappings())
@@ -199,64 +188,9 @@ public class AngularBeansServletContextListener implements ServletContextListene
 		}
 	}
 
-	public void generateModule() {
-
-		StringBuffer buffer = new StringBuffer();
-
-		String appName = null;
-		Class<? extends Object> appClass = BeanRegistry.INSTANCE.getAppClass();
-		if (appClass.isAnnotationPresent(Named.class)) {
-			appName = appClass.getAnnotation(Named.class).value();
-		}
-
-		if ((appName == null) || (appName.length() < 1)) {
-
-			appName = CommonUtils.getBeanName(appClass);
-		}
-
-		buffer.append(StaticJsCache.angularBeansMainObject);
-
-		buffer.append("var app=angular.module('" + appName + "', [");
-
-		if (appClass.isAnnotationPresent(NGModules.class)) {
-
-			NGModules ngModAnno = appClass.getAnnotation(NGModules.class);
-			String[] modules = ngModAnno.value();
-			String modulesPart = "";
-			for (String module : modules) {
-				modulesPart += ("'" + module + "',");
-			}
-			modulesPart = modulesPart.substring(0, modulesPart.length() - 1);
-
-			buffer.append(modulesPart);
-		}
-
-		buffer.append("])");
-
-		buffer.append(".run(function($rootScope) {$rootScope.sessionUID = sessionId;");
-		buffer.append("$rootScope.baseUrl=sript_origin;");
-		buffer.append("});");
-
-		StaticJsCache.CORE_SCRIPT.append(compiler
-				.getCompressedJavaScript(buffer.toString()));
-
-	}
-
-	private void generateExtentions() {
-		StringBuffer buffer = new StringBuffer();
-		for (NGService extention : BeanRegistry.INSTANCE.getExtentions()) {
-
-			Method m;
-			try {
-				m = extention.getClass().getMethod("render");
-				buffer.append(m.invoke(extention) + ";");
-			} catch (Exception e) {
-				e.printStackTrace();
-			}
-
-		}
-		StaticJsCache.EXTENTIONS_SCRIPT.append(compiler
-				.getCompressedJavaScript(buffer.toString()));
+	@Override
+	public void contextDestroyed(ServletContextEvent sce) {
+		
 	}
 
 }
